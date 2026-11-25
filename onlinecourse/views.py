@@ -9,7 +9,6 @@ import logging
 
 from .models import Course, Enrollment, Question, Choice, Submission
 
-# Get an instance of a logger
 logger = logging.getLogger(__name__)
 
 
@@ -30,15 +29,16 @@ def registration_request(request):
         first_name = request.POST['firstname']
         last_name = request.POST['lastname']
 
-        user_exist = False
-
         try:
             User.objects.get(username=username)
-            user_exist = True
-        except User.DoesNotExist:
-            logger.info("New user")
+            context['message'] = "User already exists."
+            return render(
+                request,
+                'onlinecourse/user_registration_bootstrap.html',
+                context
+            )
 
-        if not user_exist:
+        except User.DoesNotExist:
             user = User.objects.create_user(
                 username=username,
                 first_name=first_name,
@@ -47,14 +47,6 @@ def registration_request(request):
             )
             login(request, user)
             return redirect("onlinecourse:index")
-
-        else:
-            context['message'] = "User already exists."
-            return render(
-                request,
-                'onlinecourse/user_registration_bootstrap.html',
-                context
-            )
 
 
 # User Login
@@ -71,20 +63,13 @@ def login_request(request):
             login(request, user)
             return redirect('onlinecourse:index')
 
-        else:
-            context['message'] = "Invalid username or password."
-            return render(
-                request,
-                'onlinecourse/user_login_bootstrap.html',
-                context
-            )
+        context['message'] = "Invalid username or password."
 
-    else:
-        return render(
-            request,
-            'onlinecourse/user_login_bootstrap.html',
-            context
-        )
+    return render(
+        request,
+        'onlinecourse/user_login_bootstrap.html',
+        context
+    )
 
 
 # User Logout
@@ -95,18 +80,13 @@ def logout_request(request):
 
 # Check Enrollment
 def check_if_enrolled(user, course):
-    is_enrolled = False
-
-    if user.id is not None:
-        num_results = Enrollment.objects.filter(
+    if user.is_authenticated:
+        return Enrollment.objects.filter(
             user=user,
             course=course
-        ).count()
+        ).exists()
 
-        if num_results > 0:
-            is_enrolled = True
-
-    return is_enrolled
+    return False
 
 
 # Course List View
@@ -136,17 +116,18 @@ def enroll(request, course_id):
     course = get_object_or_404(Course, pk=course_id)
     user = request.user
 
-    is_enrolled = check_if_enrolled(user, course)
+    if user.is_authenticated:
+        is_enrolled = check_if_enrolled(user, course)
 
-    if not is_enrolled and user.is_authenticated:
-        Enrollment.objects.create(
-            user=user,
-            course=course,
-            mode='honor'
-        )
+        if not is_enrolled:
+            Enrollment.objects.create(
+                user=user,
+                course=course,
+                mode='honor'
+            )
 
-        course.total_enrollment += 1
-        course.save()
+            course.total_enrollment += 1
+            course.save()
 
     return HttpResponseRedirect(
         reverse(
@@ -160,11 +141,12 @@ def enroll(request, course_id):
 def extract_answers(request):
     submitted_answers = []
 
-    for key in request.POST:
-        if key.startswith('choice'):
-            value = request.POST[key]
-            choice_id = int(value)
-            submitted_answers.append(choice_id)
+    for key, value in request.POST.items():
+        if key.startswith('choice_'):
+            try:
+                submitted_answers.append(int(value))
+            except (ValueError, TypeError):
+                continue
 
     return submitted_answers
 
@@ -188,17 +170,18 @@ def submit(request, course_id):
         course=course
     )
 
+    selected_answers = extract_answers(request)
+
     submission = Submission.objects.create(
         enrollment=enrollment
     )
 
-    selected_answers = extract_answers(request)
+    valid_choices = Choice.objects.filter(
+        question__course=course,
+        id__in=selected_answers
+    )
 
-    for choice_id in selected_answers:
-        choice = get_object_or_404(Choice, pk=choice_id)
-
-        if choice.question.course_id == course.id:
-            submission.choices.add(choice)
+    submission.choices.set(valid_choices)
 
     return redirect(
         'onlinecourse:show_exam_result',
@@ -209,6 +192,9 @@ def submit(request, course_id):
 
 # Show Exam Result
 def show_exam_result(request, course_id, submission_id):
+    if not request.user.is_authenticated:
+        return redirect('onlinecourse:login')
+
     course = get_object_or_404(Course, pk=course_id)
 
     submission = get_object_or_404(
@@ -218,7 +204,7 @@ def show_exam_result(request, course_id, submission_id):
         enrollment__user=request.user
     )
 
-    selected_choice_ids = list(
+    selected_choice_ids = set(
         submission.choices.values_list('id', flat=True)
     )
 
@@ -228,7 +214,25 @@ def show_exam_result(request, course_id, submission_id):
     result_list = []
 
     for question in questions:
-        is_correct = question.is_get_score(selected_choice_ids)
+        question_choices = question.choice_set.all()
+
+        correct_ids = set(
+            question_choices.filter(
+                is_correct=True
+            ).values_list('id', flat=True)
+        )
+
+        all_choice_ids = set(
+            question_choices.values_list('id', flat=True)
+        )
+
+        selected_ids = selected_choice_ids.intersection(
+            all_choice_ids
+        )
+
+        is_correct = (
+            bool(correct_ids) and correct_ids == selected_ids
+        )
 
         if is_correct:
             total_score += question.grade
@@ -236,17 +240,15 @@ def show_exam_result(request, course_id, submission_id):
         result_list.append({
             'question': question,
             'is_correct': is_correct,
-            'selected_choices': question.choice_set.filter(
-                id__in=selected_choice_ids
+            'selected_choices': question_choices.filter(
+                id__in=selected_ids
             ),
-            'choices': question.choice_set.all()
+            'choices': question_choices
         })
-
-    grade = total_score
 
     context = {
         'course': course,
-        'grade': grade,
+        'grade': total_score,
         'submission': submission,
         'result_list': result_list,
     }
