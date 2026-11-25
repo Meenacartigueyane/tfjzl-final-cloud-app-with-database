@@ -12,11 +12,10 @@ except Exception:
 from django.conf import settings
 
 
-# Instructor model
 class Instructor(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE
     )
     full_time = models.BooleanField(default=True)
     total_learners = models.IntegerField()
@@ -25,11 +24,10 @@ class Instructor(models.Model):
         return self.user.username
 
 
-# Learner model
 class Learner(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE
     )
 
     STUDENT = 'student'
@@ -57,14 +55,12 @@ class Learner(models.Model):
         return self.user.username + "," + self.occupation
 
 
-# Course model
 class Course(models.Model):
     name = models.CharField(
         null=False,
         max_length=30,
         default='online course'
     )
-
     image = models.ImageField(upload_to='course_images/')
     description = models.CharField(max_length=1000)
     pub_date = models.DateField(null=True)
@@ -82,15 +78,16 @@ class Course(models.Model):
         return "Name: " + self.name + ",Description: " + self.description
 
 
-# Lesson model
 class Lesson(models.Model):
     title = models.CharField(max_length=200, default="title")
     order = models.IntegerField(default=0)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     content = models.TextField()
 
+    def __str__(self):
+        return self.title
 
-# Enrollment model
+
 class Enrollment(models.Model):
     AUDIT = 'audit'
     HONOR = 'honor'
@@ -106,7 +103,6 @@ class Enrollment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE
     )
-
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     date_enrolled = models.DateField(default=now)
 
@@ -118,15 +114,23 @@ class Enrollment(models.Model):
 
     rating = models.FloatField(default=5.0)
 
+    def __str__(self):
+        return self.user.username + " - " + self.course.name
 
-# Question model
+
 class Question(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
+
+    # Required field for the assignment
+    question_text = models.CharField(max_length=200, blank=True)
+
+    # Kept to preserve existing project functionality
     content = models.CharField(max_length=200)
+
     grade = models.IntegerField(default=50)
 
     def __str__(self):
-        return "Question: " + self.content
+        return "Question: " + (self.question_text or self.content)
 
     def is_get_score(self, selected_ids):
         correct_answers = set(
@@ -136,25 +140,27 @@ class Question(models.Model):
         )
 
         selected_answers = set(selected_ids)
-
         return correct_answers == selected_answers
 
 
-# Choice model
 class Choice(models.Model):
     question = models.ForeignKey(
         Question,
         on_delete=models.CASCADE
     )
 
+    # Required field for the assignment
+    choice_text = models.CharField(max_length=200, blank=True)
+
+    # Kept to preserve existing project functionality
     content = models.CharField(max_length=200)
+
     is_correct = models.BooleanField(default=False)
 
     def __str__(self):
-        return self.content
+        return self.choice_text or self.content
 
 
-# Submission model
 class Submission(models.Model):
     enrollment = models.ForeignKey(
         Enrollment,
@@ -162,3 +168,6 @@ class Submission(models.Model):
     )
 
     choices = models.ManyToManyField(Choice)
+
+    def __str__(self):
+        return f"Submission {self.id} - {self.enrollment.user.username}"
