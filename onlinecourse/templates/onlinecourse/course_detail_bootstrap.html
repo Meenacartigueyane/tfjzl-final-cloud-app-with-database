@@ -1,103 +1,48 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    {% load static %}
-    <title>Exam Results</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
+{% extends 'onlinecourse/base.html' %}
 
-<body>
+{% block title %}
+Course Details
+{% endblock %}
 
-<nav class="navbar navbar-light bg-light">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="{% url 'onlinecourse:index' %}">Home</a>
-
-        {% if user.is_authenticated %}
-            <ul class="nav navbar-nav navbar-right">
-                <li>
-                    <a class="btn btn-link" href="#">
-                        {{ user.first_name }} ({{ user.username }})
-                    </a>
-                    <a class="btn btn-link" href="{% url 'onlinecourse:logout' %}">
-                        Logout
-                    </a>
-                </li>
-            </ul>
-        {% endif %}
-    </div>
-</nav>
-
+{% block content %}
 <div class="container mt-4">
 
-    {% if grade > 80 %}
-        <div class="alert alert-success">
-            <h3>Congratulations!</h3>
-            <p>You have successfully passed the exam.</p>
+    <h2>{{ course.name }}</h2>
+
+    <p>{{ course.description }}</p>
+
+    <hr>
+
+    <h3>Lessons</h3>
+
+    {% for lesson in course.lesson_set.all %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ lesson.title }}</h5>
+                <p class="card-text">{{ lesson.content }}</p>
+            </div>
         </div>
-    {% else %}
-        <div class="alert alert-danger">
-            <h3>Sorry!</h3>
-            <p>You have not passed the exam.</p>
-        </div>
-        <a class="btn btn-link text-danger"
-           href="{% url 'onlinecourse:course_details' course.id %}">
-            Re-test
-        </a>
+    {% empty %}
+        <p>No lessons available for this course.</p>
+    {% endfor %}
+
+    {% if user.is_authenticated %}
+        <hr>
+        <h3>Course Assessment</h3>
+
+        {% for question in course.question_set.all %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5>{{ question.question_text|default:question.content }}</h5>
+
+                    {% for choice in question.choice_set.all %}
+                        <p>{{ choice.choice_text|default:choice.content }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
     {% endif %}
 
-    <div class="card mt-3">
-        <div class="card-header">
-            <h5>Exam Results</h5>
-        </div>
-
-        <div class="card-body">
-            <h4>Your Score: {{ grade }} / 100</h4>
-
-            {% for result in result_list %}
-                <div class="card mt-3">
-                    <div class="card-body">
-
-                        <h5>{{ result.question.content }}</h5>
-
-                        {% for choice in result.choices %}
-                            <p>
-                                {% if choice.is_correct %}
-                                    <span class="text-success">
-                                        ✓ {{ choice.content }} (Correct answer)
-                                    </span>
-                                {% else %}
-                                    {{ choice.content }}
-                                {% endif %}
-                            </p>
-                        {% endfor %}
-
-                        {% if result.is_correct %}
-                            <p class="text-success">
-                                <strong>Correct!</strong>
-                            </p>
-                        {% else %}
-                            <p class="text-danger">
-                                <strong>Incorrect!</strong>
-                            </p>
-                        {% endif %}
-
-                    </div>
-                </div>
-            {% empty %}
-                <p>No exam questions found.</p>
-            {% endfor %}
-
-        </div>
-    </div>
-
-    <a class="btn btn-primary mt-3"
-       href="{% url 'onlinecourse:index' %}">
-        Back to Courses
-    </a>
-
 </div>
-
-</body>
-</html>
+{% endblock %}
